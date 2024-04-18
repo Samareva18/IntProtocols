@@ -20,12 +20,12 @@ def get_fraction(value, shift):
     return int((value - int(value)) * (2 ** shift))
 
 
-def create_ntp_packet(leap_indicator, version_number, mode, stratum, pool, precision,
+def create_ntp_packet(leap_indicator, version_number, mode, lvm, stratum, pool, precision,
                       root_delay, root_dispersion, reference_identifier, reference_timestamp,
                       originate_timestamp, receive_timestamp, transmit_timestamp):
     return struct.pack("!B B b b h H h H B B B B 8I",
-                       #(leap_indicator << 6) + (version_number << 3) + mode,
-                       0x1B,
+                       # (leap_indicator << 6) + (version_number << 3) + mode,
+                       lvm,
                        stratum,
                        pool,
                        precision,
@@ -56,23 +56,27 @@ def get_current_time():
 
 ORIGINATE = 0
 
+
 def create_client_ntp_packet():
     current_time = get_current_time()
 
-    ntp_packet = create_ntp_packet(0, 0, 3, 3, 0, 0, 0,
-                                   0, 0, 0, current_time, 0, 0)
+    ntp_packet = create_ntp_packet(0x1B, 0, 3, 0x1B, 0, 0, 0,
+                                   0, 0, 0, 0, current_time, 0, 0)
 
     return ntp_packet
 
+
 data = create_client_ntp_packet()
 
-print(data)
 
+# print(data)
 
 
 def unpack_ntp_packet(data: bytes):
     ntp_packet = {}
     unpacked_data = struct.unpack("!B B b b 11I", data)
+
+    print(unpacked_data)
 
     ntp_packet['leap_indicator'] = unpacked_data[0] >> 6  # 2 bits
     ntp_packet['version_number'] = (unpacked_data[0] >> 3) & 0b111  # 3 bits
@@ -97,9 +101,11 @@ def unpack_ntp_packet(data: bytes):
 
     return ntp_packet
 
+
 ORIGINATE = (unpack_ntp_packet(data))['originate']
 
-print('originate' + str(ORIGINATE))
+
+# print('originate' + str(ORIGINATE))
 
 def get_stratum_reply():
     ntp_packet = create_client_ntp_packet()
@@ -112,37 +118,32 @@ def get_stratum_reply():
     return data
 
 
-print(get_stratum_reply())
+# print(get_stratum_reply())
 
 
 def calculate_offset():
     data = get_stratum_reply()
-    unpuck_data = struct.unpack('!12I', data)
-    # originate = unpuck_data[8]  # клиент отправил запрос
-    # receive = unpuck_data[9]  # сервер получил пакет
-    # transmit = unpuck_data[10]  # сервер отправил пакет клиенту
+
     arrive = get_current_time()
 
     unpack_data = unpack_ntp_packet(data)
 
-    #originate = unpack_data['originate']
+    # originate = unpack_data['originate']
     originate = ORIGINATE
     receive = unpack_data['receive']
     transmit = unpack_data['transmit']
-    print(originate, receive, transmit, arrive)
-    print(unpack_data)
+    # print(originate, receive, transmit, arrive)
+    # print(unpack_data)
 
-    # 3922453195 3672479437 3922453195 3922453150.0037947
-    # -124986856.50189734
-
-    offset = (receive - originate + transmit - arrive) * 0.5
+    offset = receive - originate + transmit - arrive
 
     return offset
 
 
 print(calculate_offset())
 
-print(unpack_ntp_packet(create_client_ntp_packet()))
+
+# print(unpack_ntp_packet(create_client_ntp_packet()))
 
 def get_current_time_wth_offset():
     offset = calculate_offset()
@@ -150,22 +151,22 @@ def get_current_time_wth_offset():
 
 
 def create_server_ntp_packet(originate, recieve, transmit):
-    ntp_packet = struct.pack('!12I',
-                             0x1C,  # LI, VN, Mode
-                             0, 0, 0, 0, 0, 0, 0, 0, originate, recieve,
-                             transmit)
+    ntp_packet = create_ntp_packet(0, 0, 4, 0x1C, 0, 0, 0,
+                                   0, 0, 0, 0, originate, recieve, transmit)
     return ntp_packet
 
 
 def handle_client(client_socket, data, addr, recieve):
     # Обработка соединения с клиентом
     # client_ntp_packet = client_socket.recv(48)
-    data = struct.unpack('!12I', data)
+    unpack_data = unpack_ntp_packet(data)
 
-    originate = int(data[8])
-    transmit = int(get_current_time_wth_offset() + DELAY)
+    originate = unpack_data['originate']
+    transmit = get_current_time_wth_offset() + DELAY
 
     ntp_packet = create_server_ntp_packet(originate, recieve, transmit)
+
+    print('send our ntp ' + str(unpack_ntp_packet(ntp_packet)))
 
     # Отправка ответа клиенту
     client_socket.sendto(ntp_packet, addr)
@@ -184,7 +185,7 @@ def ntp_server(host, port):
         data, addr = server.recvfrom(48)
         print(f"Accepted connection from {addr}")
 
-        recieve = int(get_current_time())
+        recieve = get_current_time()
         client_thread = threading.Thread(target=handle_client, args=(server, data, addr, recieve))
         client_thread.start()
 
