@@ -1,9 +1,6 @@
 import socket
-import struct
 import time
 import ntp_server
-
-client_ntp_packet = ntp_server.create_client_ntp_packet()
 
 
 def send_request():
@@ -26,12 +23,11 @@ def get_current_time():
 
 def calculate_offset():
     data = send_request()
-    unpuck_data = ntp_server.unpack_ntp_packet(data)
-    print(unpuck_data)
+    unpack_data = ntp_server.unpack_ntp_packet(data)
 
-    originate = unpuck_data['originate']  # клиент отправил запрос
-    receive = unpuck_data['receive']  # сервер получил пакет
-    transmit = unpuck_data['transmit']  # сервер отправил пакет клиенту
+    originate = unpack_data['originate']  # клиент отправил запрос
+    receive = unpack_data['receive']  # сервер получил пакет
+    transmit = unpack_data['transmit']  # сервер отправил пакет клиенту
     arrive = get_current_time()
 
     offset = receive - originate + transmit - arrive
@@ -39,4 +35,4 @@ def calculate_offset():
     return offset
 
 
-print(calculate_offset())
+print('Result delay: ' + str(calculate_offset()))
